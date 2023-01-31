@@ -21,6 +21,11 @@ func pushingFalse(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	return c.PushingNext1(t.Runtime, falseValue), nil
 }
 
+// pushingTrue can be used to return the value true.
+func pushingTrue(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	return c.PushingNext1(t.Runtime, trueValue), nil
+}
+
 // pushingInt can be used to return the integer value i.
 func pushingInt[T constraints.Integer](
 	t *rt.Thread, c *rt.GoCont, i T,
