@@ -2,6 +2,7 @@ package proto
 
 import (
 	"errors"
+	"fmt"
 	"math"
 
 	rt "github.com/arnodel/golua/runtime"
@@ -21,6 +22,7 @@ var (
 func init() {
 	msgTable = rt.NewTable()
 	msgMethods = make(map[string]rt.Value)
+	setMapFunc(msgMethods, "Has", msgHas, 2, true)
 	setMapFunc(msgMethods, "Marshal", msgMarshal, 2, false)
 	setMapFunc(msgMethods, "Type", msgType, 1, false)
 	setTableFunc(msgTable, "__eq", msgEqual, 2, false)
@@ -40,6 +42,41 @@ func msgEqual(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 		return pushingFalse(t, c)
 	}
 	return pushingBool(t, c, proto.Equal(lhsMsg, rhsMsg))
+}
+
+// msgHas checks whether the message has the specified field.
+func msgHas(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	ud, _ := c.UserDataArg(0)
+	rmsg := ud.Value().(proto.Message).ProtoReflect()
+	fieldSpec := c.Arg(1)
+	var fd pr.FieldDescriptor
+	if fieldName, ok := fieldSpec.TryString(); ok {
+		fd = rmsg.Descriptor().Fields().ByName(pr.Name(fieldName))
+	} else if fieldNumber, ok := fieldSpec.TryInt(); ok {
+		if fieldNumber < 0 || fieldNumber > math.MaxInt32 {
+			return pushingFalse(t, c)
+		}
+		fd = rmsg.Descriptor().Fields().ByNumber(pr.FieldNumber(fieldNumber))
+	} else {
+		return nil, fmt.Errorf("invalid field spec type '%s'", fieldSpec.TypeName())
+	}
+	if fd == nil {
+		return pushingFalse(t, c)
+	}
+	if !rmsg.Has(fd) {
+		return pushingFalse(t, c)
+	}
+	tail := c.Etc()
+	if len(tail) == 0 {
+		return pushingTrue(t, c)
+	}
+	value := protoFieldToLua(rmsg, fd)
+	m, err := rt.Index(t, value, rt.StringValue("Has"))
+	if err != nil {
+		return nil, fmt.Errorf("%s is not an aggregate", fd.FullName())
+	}
+	err = rt.Call(t, m, append([]rt.Value{value}, tail...), c.Next())
+	return c.Next(), err
 }
 
 // msgIndex implements the msg[x] operation in Lua.
