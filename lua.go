@@ -56,3 +56,17 @@ func setTableFunc(
 	t.Set(rt.StringValue(name),
 		rt.FunctionValue(rt.NewGoFunction(f, name, nArgs, hasEtc)))
 }
+
+// tailMethodCall calls obj:methodName with args and uses the return
+// values as argument for the next continuation.
+// Should be called as "return tailMethodCall(…)".
+func tailMethodCall(
+	t *rt.Thread, c rt.Cont, obj rt.Value, methodName string, args []rt.Value,
+) (rt.Cont, error) {
+	m, err := rt.Index(t, obj, rt.StringValue("Has"))
+	if err != nil {
+		return nil, err
+	}
+	err = rt.Call(t, m, append([]rt.Value{obj}, args...), c.Next())
+	return c.Next(), err
+}

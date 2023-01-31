@@ -71,12 +71,7 @@ func msgHas(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 		return pushingTrue(t, c)
 	}
 	value := protoFieldToLua(rmsg, fd)
-	m, err := rt.Index(t, value, rt.StringValue("Has"))
-	if err != nil {
-		return nil, fmt.Errorf("%s is not an aggregate", fd.FullName())
-	}
-	err = rt.Call(t, m, append([]rt.Value{value}, tail...), c.Next())
-	return c.Next(), err
+	return tailMethodCall(t, c, value, "Has", tail)
 }
 
 // msgIndex implements the msg[x] operation in Lua.
