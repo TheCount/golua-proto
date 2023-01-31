@@ -10,6 +10,7 @@ import (
 	"github.com/arnodel/golua/luatesting"
 	rt "github.com/arnodel/golua/runtime"
 	_ "google.golang.org/protobuf/types/known/durationpb"
+	_ "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // TestProtoLib runs all Lua tests in the proto library.

@@ -22,6 +22,7 @@ func init() {
 	msgTable = rt.NewTable()
 	msgMethods = make(map[string]rt.Value)
 	setMapFunc(msgMethods, "Marshal", msgMarshal, 2, false)
+	setMapFunc(msgMethods, "Type", msgType, 1, false)
 	setTableFunc(msgTable, "__eq", msgEqual, 2, false)
 	setTableFunc(msgTable, "__index", msgIndex, 2, false)
 }
@@ -149,6 +150,13 @@ func msgMarshalOpts(
 ) (rt.Cont, error) {
 	// FIXME
 	return nil, errors.New("sorry, marshalling with options not supported yet")
+}
+
+// msgType returns the message type of a protobuf message.
+func msgType(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	ud, _ := c.UserDataArg(0)
+	msg := ud.Value().(proto.Message)
+	return c.PushingNext1(t.Runtime, wrapType(msg.ProtoReflect().Type())), nil
 }
 
 // Wrap returns the given protobuf message as a Lua value.
