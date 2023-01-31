@@ -1,5 +1,5 @@
-github.com/arnodel/golua v0.0.0-20230109121812-5e606a935573 h1:OtGyYHQhBGsJrvMVuc56taNHFIQo9KhoeO3KPXIuyPI=
-github.com/arnodel/golua v0.0.0-20230109121812-5e606a935573/go.mod h1:9jzpYPiU2is0HVGCiuIOBSXdergHUW44IEjmuN1UrIE=
+github.com/arnodel/golua v0.0.0-20230131164532-0907c3fb5807 h1:aWAx3CcCsPREWE+TypkgKHLbdqcm9OkEcLMwTlymNew=
+github.com/arnodel/golua v0.0.0-20230131164532-0907c3fb5807/go.mod h1:9jzpYPiU2is0HVGCiuIOBSXdergHUW44IEjmuN1UrIE=
 github.com/arnodel/strftime v0.1.6 h1:0hc0pUvk8KhEMXE+htyaOUV42zNcf/csIbjzEFCJqsw=
 github.com/arnodel/strftime v0.1.6/go.mod h1:5NbK5XqYK8QpRZpqKNt4OlxLtIB8cotkLk4KTKzJfWs=
 github.com/golang/protobuf v1.5.0/go.mod h1:FsONVRAS9T7sI+LIUmWTfcYkHO4aIWwzhcaSAoJOfIk=
