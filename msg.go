@@ -27,6 +27,7 @@ func init() {
 	setMapFunc(msgMethods, "Type", msgType, 1, false)
 	setTableFunc(msgTable, "__eq", msgEqual, 2, false)
 	setTableFunc(msgTable, "__index", msgIndex, 2, false)
+	setTableFunc(msgTable, "__newindex", msgNewIndex, 3, false)
 }
 
 // msgEqual checks two protobuf messages for equality in Lua.
@@ -146,6 +147,87 @@ func msgIndexUserData(
 		return c.PushingNext1(t.Runtime, retValue), nil
 	default:
 		return c.Next(), nil
+	}
+}
+
+// msgNewIndex implements the msg[k] = v operation in Lua.
+func msgNewIndex(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	ud, _ := c.UserDataArg(0)
+	rmsg := ud.Value().(proto.Message).ProtoReflect()
+	k := c.Arg(1)
+	if s, ok := k.TryString(); ok {
+		return msgNewIndexString(t, c, rmsg, s)
+	}
+	if i, ok := k.TryInt(); ok {
+		return msgNewIndexInt(t, c, rmsg, i)
+	}
+	if ud, ok := k.TryUserData(); ok {
+		return msgNewIndexUserData(t, c, rmsg, ud)
+	}
+	return nil, fmt.Errorf("bad index type %s", k.TypeName())
+}
+
+// msgNewIndexFD implements the msg[fd] = v operation in Lua.
+func msgNewIndexFD(
+	t *rt.Thread, c *rt.GoCont, msg pr.Message, fd pr.FieldDescriptor,
+) (rt.Cont, error) {
+	if fd.ContainingMessage().FullName() != msg.Descriptor().FullName() {
+		return nil, fmt.Errorf(
+			"field descriptor '%s' does not belong to message type '%s'",
+			fd.FullName(), msg.Descriptor().FullName())
+	}
+	luaValue := c.Arg(2)
+	if luaValue.IsNil() {
+		if fd.HasPresence() || fd.IsList() || fd.IsMap() {
+			msg.Clear(fd)
+			return c.Next(), nil
+		}
+		return nil, fmt.Errorf("nil value not allowed for field '%s'", fd.Name())
+	}
+	value, err := luaToProtoValue(fd, luaValue)
+	if err != nil {
+		return nil, err
+	}
+	msg.Set(fd, value)
+	return c.Next(), nil
+}
+
+// msgNewIndexInt implements msg[fieldNumber] = v in Lua.
+func msgNewIndexInt(
+	t *rt.Thread, c *rt.GoCont, msg pr.Message, fieldNumber int64,
+) (rt.Cont, error) {
+	if fieldNumber < 0 || fieldNumber > math.MaxInt32 {
+		return nil, fmt.Errorf("field number out of bounds: %d", fieldNumber)
+	}
+	fd := msg.Descriptor().Fields().ByNumber(pr.FieldNumber(fieldNumber))
+	if fd == nil {
+		return nil, fmt.Errorf("no such field number: %d", fieldNumber)
+	}
+	return msgNewIndexFD(t, c, msg, fd)
+}
+
+// msgNewIndexString implements msg.fieldName = v in Lua.
+func msgNewIndexString(
+	t *rt.Thread, c *rt.GoCont, msg pr.Message, fieldName string,
+) (rt.Cont, error) {
+	fd := msg.Descriptor().Fields().ByName(pr.Name(fieldName))
+	if fd == nil {
+		return nil, fmt.Errorf("no such field: %s", fieldName)
+	}
+	return msgNewIndexFD(t, c, msg, fd)
+}
+
+// msgNewIndexUserData supports setting a message field via various
+// user data types.
+// Currently, only pr.FieldDescriptor is supported.
+func msgNewIndexUserData(
+	t *rt.Thread, c *rt.GoCont, msg pr.Message, ud *rt.UserData,
+) (rt.Cont, error) {
+	switch x := ud.Value().(type) {
+	case pr.FieldDescriptor:
+		return msgNewIndexFD(t, c, msg, x)
+	default:
+		return nil, fmt.Errorf("userdata index of type %T not supported", x)
 	}
 }
 
