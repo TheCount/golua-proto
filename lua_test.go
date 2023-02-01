@@ -10,6 +10,7 @@ import (
 	"github.com/arnodel/golua/luatesting"
 	rt "github.com/arnodel/golua/runtime"
 	_ "google.golang.org/protobuf/types/known/durationpb"
+	_ "google.golang.org/protobuf/types/known/structpb"
 	_ "google.golang.org/protobuf/types/known/timestamppb"
 )
 
