@@ -11,4 +11,13 @@ do
   --> =false
   print(msg1:Type() == msg3:Type())
   --> =true
+  print(msg1 == msg1:Type(), msg1:Type() == msg1)
+  --> =false	false
+
+  msg1.seconds = 1
+  print(msg1 == msg3)
+  --> =false
+  msg3.seconds = 1
+  print(msg1 == msg3)
+  --> =true
 end
