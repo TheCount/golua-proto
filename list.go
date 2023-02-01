@@ -41,10 +41,10 @@ func listIndex(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 func listIndexInt(
 	t *rt.Thread, c *rt.GoCont, lw *listWrapper, idx int64,
 ) (rt.Cont, error) {
-	if idx < 0 || idx >= int64(lw.list.Len()) {
+	if idx <= 0 || idx > int64(lw.list.Len()) {
 		return c.Next(), nil
 	}
-	ret := protoValueToLua(lw.field, lw.list.Get(int(idx)))
+	ret := protoValueToLua(lw.field, lw.list.Get(int(idx-1)))
 	return c.PushingNext1(t.Runtime, ret), nil
 }
 
