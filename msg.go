@@ -22,8 +22,10 @@ var (
 func init() {
 	msgTable = rt.NewTable()
 	msgMethods = make(map[string]rt.Value)
+	setMapFunc(msgMethods, "FullName", msgFullName, 1, false)
 	setMapFunc(msgMethods, "Has", msgHas, 2, true)
 	setMapFunc(msgMethods, "Marshal", msgMarshal, 2, false)
+	setMapFunc(msgMethods, "Name", msgName, 1, false)
 	setMapFunc(msgMethods, "Type", msgType, 1, false)
 	setTableFunc(msgTable, "__eq", msgEqual, 2, false)
 	setTableFunc(msgTable, "__index", msgIndex, 2, false)
@@ -43,6 +45,13 @@ func msgEqual(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 		return pushingFalse(t, c)
 	}
 	return pushingBool(t, c, proto.Equal(lhsMsg, rhsMsg))
+}
+
+// msgFullName returns the full name of a protobuf message.
+func msgFullName(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	ud, _ := c.UserDataArg(0)
+	rmsg := ud.Value().(proto.Message).ProtoReflect()
+	return pushingString(t, c, string(rmsg.Descriptor().FullName()))
 }
 
 // msgHas checks whether the message has the specified field.
@@ -148,6 +157,13 @@ func msgIndexUserData(
 	default:
 		return c.Next(), nil
 	}
+}
+
+// msgName returns the name of a protobuf message.
+func msgName(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	ud, _ := c.UserDataArg(0)
+	rmsg := ud.Value().(proto.Message).ProtoReflect()
+	return pushingString(t, c, string(rmsg.Descriptor().Name()))
 }
 
 // msgNewIndex implements the msg[k] = v operation in Lua.
