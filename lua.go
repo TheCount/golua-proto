@@ -80,6 +80,5 @@ func tailMethodCall(
 	if err != nil {
 		return nil, err
 	}
-	err = rt.Call(t, m, append([]rt.Value{obj}, args...), c.Next())
-	return c.Next(), err
+	return nil, rt.Call(t, m, append([]rt.Value{obj}, args...), c.Next())
 }
