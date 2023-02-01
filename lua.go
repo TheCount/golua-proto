@@ -11,6 +11,19 @@ var (
 	trueValue  = rt.BoolValue(true)
 )
 
+// makeClosingVar creates a closing variable which closes the given channel.
+func makeClosingVar(toBeClosed chan<- struct{}) rt.Value {
+	meta := rt.NewTable()
+	meta.Set(rt.StringValue("__close"), rt.FunctionValue(rt.NewGoFunction(
+		func(_ *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+			close(toBeClosed)
+			return c.Next(), nil
+		}, "__close", 2, false)))
+	ret := rt.NewTable()
+	ret.SetMetatable(meta)
+	return rt.TableValue(ret)
+}
+
 // pushingBool can be used to return the boolean value b.
 func pushingBool(t *rt.Thread, c *rt.GoCont, b bool) (rt.Cont, error) {
 	return c.PushingNext1(t.Runtime, rt.BoolValue(b)), nil

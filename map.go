@@ -29,6 +29,7 @@ func init() {
 	mapTable = rt.NewTable()
 	mapMethods = make(map[string]rt.Value)
 	setMapFunc(mapMethods, "Has", mapHas, 2, true)
+	setMapFunc(mapMethods, "Range", mapRange, 1, false)
 	setTableFunc(mapTable, "__index", mapIndex, 2, false)
 	setTableFunc(mapTable, "__len", mapLen, 1, false)
 }
@@ -197,6 +198,47 @@ func mapLen(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	ud, _ := c.UserDataArg(0)
 	mw := ud.Value().(*mapWrapper)
 	return pushingInt(t, c, mw.m.Len())
+}
+
+// mapRange allows ranging over a map.
+// The pairs() mechanism cannot be used, see
+// https://stackoverflow.com/q/75263097/4838452.
+func mapRange(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	type keyValue struct {
+		key, value rt.Value
+	}
+	ud, _ := c.UserDataArg(0)
+	mw := ud.Value().(*mapWrapper)
+	state := make(chan keyValue)
+	done := make(chan struct{})
+	closing := makeClosingVar(done)
+	go func() {
+		mw.m.Range(func(k pr.MapKey, v pr.Value) bool {
+			elt := keyValue{
+				key:   protoValueToLua(mw.field.MapKey(), k.Value()),
+				value: protoValueToLua(mw.field.MapValue(), v),
+			}
+			select {
+			case <-done:
+				return false
+			case state <- elt:
+				return true
+			}
+		})
+		elt := keyValue{
+			key:   rt.NilValue,
+			value: rt.NilValue,
+		}
+		select {
+		case <-done:
+		case state <- elt:
+		}
+	}()
+	return c.PushingNext(t.Runtime, rt.FunctionValue(rt.NewGoFunction(
+		func(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+			elt := <-state
+			return c.PushingNext(t.Runtime, elt.key, elt.value), nil
+		}, "iterator", 2, false)), rt.NilValue, rt.NilValue, closing), nil
 }
 
 // wrapMap wraps the given map from the given map field as a Lua value.
