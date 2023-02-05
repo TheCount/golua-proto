@@ -22,8 +22,8 @@ var (
 // init initializes listTable.
 func init() {
 	listTable = rt.NewTable()
-	setTableFunc(listTable, "__index", listIndex, 2, false)
-	setTableFunc(listTable, "__len", listLen, 1, false)
+	setTableFunc(listTable, "__index", listIndex, 2, false, cpuIOMemTimeSafe)
+	setTableFunc(listTable, "__len", listLen, 1, false, cpuIOMemTimeSafe)
 }
 
 // listIndex performs the index operation on a list in Lua.

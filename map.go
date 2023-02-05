@@ -28,10 +28,10 @@ var (
 func init() {
 	mapTable = rt.NewTable()
 	mapMethods = make(map[string]rt.Value)
-	setMapFunc(mapMethods, "Has", mapHas, 2, true)
-	setMapFunc(mapMethods, "Range", mapRange, 1, false)
-	setTableFunc(mapTable, "__index", mapIndex, 2, false)
-	setTableFunc(mapTable, "__len", mapLen, 1, false)
+	setMapFunc(mapMethods, "Has", mapHas, 2, true, cpuIOMemTimeSafe)
+	setMapFunc(mapMethods, "Range", mapRange, 1, false, cpuIOMemTimeSafe)
+	setTableFunc(mapTable, "__index", mapIndex, 2, false, cpuIOMemTimeSafe)
+	setTableFunc(mapTable, "__len", mapLen, 1, false, cpuIOMemTimeSafe)
 }
 
 // mapHas checks whether the map has the specified key.
@@ -211,7 +211,8 @@ func mapRange(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	mw := ud.Value().(*mapWrapper)
 	state := make(chan keyValue)
 	done := make(chan struct{})
-	closing := makeClosingVar(done)
+	t.Runtime.RequireMem(goroutineOverhead)
+	closing := makeClosingVar(done, goroutineOverhead)
 	go func() {
 		mw.m.Range(func(k pr.MapKey, v pr.Value) bool {
 			elt := keyValue{
@@ -234,11 +235,14 @@ func mapRange(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 		case state <- elt:
 		}
 	}()
-	return c.PushingNext(t.Runtime, rt.FunctionValue(rt.NewGoFunction(
+	iteratorFunction := rt.NewGoFunction(
 		func(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 			elt := <-state
 			return c.PushingNext(t.Runtime, elt.key, elt.value), nil
-		}, "iterator", 2, false)), rt.NilValue, rt.NilValue, closing), nil
+		}, "iterator", 2, false)
+	rt.SolemnlyDeclareCompliance(cpuIOMemTimeSafe, iteratorFunction)
+	return c.PushingNext(t.Runtime, rt.FunctionValue(iteratorFunction),
+		rt.NilValue, rt.NilValue, closing), nil
 }
 
 // wrapMap wraps the given map from the given map field as a Lua value.

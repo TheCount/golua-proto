@@ -22,14 +22,14 @@ var (
 func init() {
 	msgTable = rt.NewTable()
 	msgMethods = make(map[string]rt.Value)
-	setMapFunc(msgMethods, "FullName", msgFullName, 1, false)
-	setMapFunc(msgMethods, "Has", msgHas, 2, true)
-	setMapFunc(msgMethods, "Marshal", msgMarshal, 2, false)
-	setMapFunc(msgMethods, "Name", msgName, 1, false)
-	setMapFunc(msgMethods, "Type", msgType, 1, false)
-	setTableFunc(msgTable, "__eq", msgEqual, 2, false)
-	setTableFunc(msgTable, "__index", msgIndex, 2, false)
-	setTableFunc(msgTable, "__newindex", msgNewIndex, 3, false)
+	setMapFunc(msgMethods, "FullName", msgFullName, 1, false, cpuIOMemTimeSafe)
+	setMapFunc(msgMethods, "Has", msgHas, 2, true, cpuIOMemTimeSafe)
+	setMapFunc(msgMethods, "Marshal", msgMarshal, 2, false, cpuIOTimeSafe)
+	setMapFunc(msgMethods, "Name", msgName, 1, false, cpuIOMemTimeSafe)
+	setMapFunc(msgMethods, "Type", msgType, 1, false, cpuIOMemTimeSafe)
+	setTableFunc(msgTable, "__eq", msgEqual, 2, false, cpuIOMemTimeSafe)
+	setTableFunc(msgTable, "__index", msgIndex, 2, false, cpuIOMemTimeSafe)
+	setTableFunc(msgTable, "__newindex", msgNewIndex, 3, false, cpuIOTimeSafe)
 }
 
 // msgEqual checks two protobuf messages for equality in Lua.

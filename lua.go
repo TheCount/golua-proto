@@ -5,18 +5,31 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
+// goroutineOverhead is a rough estimate of resources allocated while we have
+// to run a goroutine in this package: 2K goroutine stack plus all the stuff
+// that is going on.
+const goroutineOverhead = 4096
+
+// compliance flags
+const (
+	cpuIOTimeSafe    = rt.ComplyCpuSafe | rt.ComplyIoSafe | rt.ComplyTimeSafe
+	cpuIOMemTimeSafe = cpuIOTimeSafe | rt.ComplyMemSafe
+)
+
 // Boolean false and true as Lua values.
 var (
 	falseValue = rt.BoolValue(false)
 	trueValue  = rt.BoolValue(true)
 )
 
-// makeClosingVar creates a closing variable which closes the given channel.
-func makeClosingVar(toBeClosed chan<- struct{}) rt.Value {
+// makeClosingVar creates a closing variable which closes the given channel
+// and releases the memory resources associated with its function.
+func makeClosingVar(toBeClosed chan<- struct{}, releaseMem uint64) rt.Value {
 	meta := rt.NewTable()
 	meta.Set(rt.StringValue("__close"), rt.FunctionValue(rt.NewGoFunction(
-		func(_ *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+		func(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 			close(toBeClosed)
+			t.Runtime.ReleaseMem(releaseMem)
 			return c.Next(), nil
 		}, "__close", 2, false)))
 	ret := rt.NewTable()
@@ -58,16 +71,21 @@ func pushingString(t *rt.Thread, c *rt.GoCont, s string) (rt.Cont, error) {
 func setMapFunc(
 	m map[string]rt.Value, name string,
 	f rt.GoFunctionFunc, nArgs int, hasEtc bool,
+	complianceFlags rt.ComplianceFlags,
 ) {
-	m[name] = rt.FunctionValue(rt.NewGoFunction(f, name, nArgs, hasEtc))
+	goF := rt.NewGoFunction(f, name, nArgs, hasEtc)
+	rt.SolemnlyDeclareCompliance(complianceFlags, goF)
+	m[name] = rt.FunctionValue(goF)
 }
 
 // setTableFunc sets t.name = f.
 func setTableFunc(
 	t *rt.Table, name string, f rt.GoFunctionFunc, nArgs int, hasEtc bool,
+	complianceFlags rt.ComplianceFlags,
 ) {
-	t.Set(rt.StringValue(name),
-		rt.FunctionValue(rt.NewGoFunction(f, name, nArgs, hasEtc)))
+	goF := rt.NewGoFunction(f, name, nArgs, hasEtc)
+	rt.SolemnlyDeclareCompliance(complianceFlags, goF)
+	t.Set(rt.StringValue(name), rt.FunctionValue(goF))
 }
 
 // tailMethodCall calls obj:methodName with args and uses the return

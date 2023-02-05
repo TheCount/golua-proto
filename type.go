@@ -13,7 +13,7 @@ var (
 // init initializes typeTable.
 func init() {
 	typeTable = rt.NewTable()
-	setTableFunc(typeTable, "__eq", typeEqual, 2, false)
+	setTableFunc(typeTable, "__eq", typeEqual, 2, false, cpuIOMemTimeSafe)
 }
 
 // typeEqual checks two protobuf message types for equality.
