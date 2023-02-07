@@ -201,17 +201,21 @@ func luaToProtoValue(
 
 // protoFieldToLua converts the given protobuf value specified as a message
 // and a message field to a Lua value.
-// If the value is not valid, nil is returned.
-func protoFieldToLua(rmsg pr.Message, fd pr.FieldDescriptor) rt.Value {
-	if fd.HasPresence() && !rmsg.Has(fd) {
-		return rt.NilValue
-	}
-	return protoValueToLua(fd, rmsg.Get(fd))
+// If the value is not supported, nil is returned.
+// If readOnly is true, composite fields will be returned as a read-only value.
+func protoFieldToLua(
+	rmsg pr.Message, fd pr.FieldDescriptor, readOnly bool,
+) rt.Value {
+	return protoValueToLua(fd, rmsg.Get(fd), readOnly)
 }
 
 // protoValueToLua returns the given protobuf value from the given field
 // as a Lua value.
-func protoValueToLua(fd pr.FieldDescriptor, value pr.Value) rt.Value {
+// If the value is not supported, nil is returned.
+// If readOnly is true, a composite value will be returned as a read-only value.
+func protoValueToLua(
+	fd pr.FieldDescriptor, value pr.Value, readOnly bool,
+) rt.Value {
 	switch x := value.Interface().(type) {
 	case bool:
 		return rt.BoolValue(x)
@@ -234,11 +238,11 @@ func protoValueToLua(fd pr.FieldDescriptor, value pr.Value) rt.Value {
 	case pr.EnumNumber:
 		return rt.IntValue(int64(x))
 	case pr.Message:
-		return Wrap(x.Interface())
+		return wrap(x.Interface(), readOnly || !x.IsValid())
 	case pr.List:
-		return wrapList(fd, x)
+		return wrapList(fd, x, readOnly || !x.IsValid())
 	case pr.Map:
-		return wrapMap(fd, x)
+		return wrapMap(fd, x, readOnly || !x.IsValid())
 	default:
 		return rt.NilValue
 	}

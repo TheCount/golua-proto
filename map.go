@@ -20,18 +20,30 @@ var (
 	// mapTable is the metatable for protobuf map field values.
 	mapTable *rt.Table
 
+	// mapTableReadOnly is the metatable for read-only protobuf map field values.
+	mapTableReadOnly *rt.Table
+
 	// mapMethods are the methods for protobuf maps.
 	mapMethods map[string]rt.Value
 )
 
-// init initializes mapTable and mapMethods.
+// init initializes mapTable(ReadOnly) and mapMethods.
 func init() {
 	mapTable = rt.NewTable()
+	mapTableReadOnly = rt.NewTable()
 	mapMethods = make(map[string]rt.Value)
 	setMapFunc(mapMethods, "Has", mapHas, 2, true, cpuIOMemTimeSafe)
+	setMapFunc(mapMethods,
+		"IsReadOnly", mapIsReadOnly, 1, false, cpuIOMemTimeSafe)
 	setMapFunc(mapMethods, "Range", mapRange, 1, false, cpuIOMemTimeSafe)
-	setTableFunc(mapTable, "__index", mapIndex, 2, false, cpuIOMemTimeSafe)
-	setTableFunc(mapTable, "__len", mapLen, 1, false, cpuIOMemTimeSafe)
+	setMapFunc(mapMethods, "ReadOnly", mapReadOnly, 1, false, cpuIOMemTimeSafe)
+	setTableFunc("__index", mapIndex, 2, false, cpuIOMemTimeSafe, mapTable)
+	setTableFunc(
+		"__index", mapIndexReadOnly, 2, false, cpuIOMemTimeSafe, mapTableReadOnly)
+	setTableFunc(
+		"__len", mapLen, 1, false, cpuIOMemTimeSafe, mapTable, mapTableReadOnly)
+	setTableFunc(
+		"__len", mapLen, 1, false, cpuIOMemTimeSafe, mapTable, mapTableReadOnly)
 }
 
 // mapHas checks whether the map has the specified key.
@@ -109,7 +121,7 @@ func mapHasTail(
 	if len(tail) == 0 {
 		return pushingTrue(t, c)
 	}
-	value := protoValueToLua(mw.field, mw.m.Get(key))
+	value := protoValueToLua(mw.field, mw.m.Get(key), true)
 	return tailMethodCall(t, c, value, "Has", tail)
 }
 
@@ -119,20 +131,39 @@ func mapIndex(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	mw := ud.Value().(*mapWrapper)
 	k := c.Arg(1)
 	if s, ok := k.TryString(); ok {
-		return mapIndexString(t, c, mw, s)
+		return mapIndexString(t, c, mw, s, false)
 	}
 	if i, ok := k.TryInt(); ok {
-		return mapIndexInt(t, c, mw, i)
+		return mapIndexInt(t, c, mw, i, false)
 	}
 	if b, ok := k.TryBool(); ok {
-		return mapIndexBool(t, c, mw, b)
+		return mapIndexBool(t, c, mw, b, false)
+	}
+	return c.Next(), nil
+}
+
+// mapIndexReadOnly performs the index operation on a map in Lua.
+// Composite values are returned read-only.
+func mapIndexReadOnly(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	ud, _ := c.UserDataArg(0)
+	mw := ud.Value().(*mapWrapper)
+	k := c.Arg(1)
+	if s, ok := k.TryString(); ok {
+		return mapIndexString(t, c, mw, s, true)
+	}
+	if i, ok := k.TryInt(); ok {
+		return mapIndexInt(t, c, mw, i, true)
+	}
+	if b, ok := k.TryBool(); ok {
+		return mapIndexBool(t, c, mw, b, true)
 	}
 	return c.Next(), nil
 }
 
 // mapIndexBool returns the map value at the specified bool key.
+// If readOnly is true, composite values are returned read-only.
 func mapIndexBool(
-	t *rt.Thread, c *rt.GoCont, mw *mapWrapper, b bool,
+	t *rt.Thread, c *rt.GoCont, mw *mapWrapper, b bool, readOnly bool,
 ) (rt.Cont, error) {
 	if mw.field.MapKey().Kind() != pr.BoolKind {
 		return c.Next(), nil
@@ -141,13 +172,14 @@ func mapIndexBool(
 	if !mw.m.Has(key) {
 		return c.Next(), nil
 	}
-	ret := protoValueToLua(mw.field.MapValue(), mw.m.Get(key))
+	ret := protoValueToLua(mw.field.MapValue(), mw.m.Get(key), readOnly)
 	return c.PushingNext1(t.Runtime, ret), nil
 }
 
 // mapIndexInt returns the map value at the specified key.
+// If readOnly is true, composite values are returned read-only.
 func mapIndexInt(
-	t *rt.Thread, c *rt.GoCont, mw *mapWrapper, idx int64,
+	t *rt.Thread, c *rt.GoCont, mw *mapWrapper, idx int64, readOnly bool,
 ) (rt.Cont, error) {
 	var key pr.MapKey
 	switch mw.field.MapKey().Kind() {
@@ -171,13 +203,14 @@ func mapIndexInt(
 	if !mw.m.Has(key) {
 		return c.Next(), nil
 	}
-	ret := protoValueToLua(mw.field.MapValue(), mw.m.Get(key))
+	ret := protoValueToLua(mw.field.MapValue(), mw.m.Get(key), readOnly)
 	return c.PushingNext1(t.Runtime, ret), nil
 }
 
 // mapIndexString returns the map value at the specified string key.
+// If readOnly is true, composite values are returned read-only.
 func mapIndexString(
-	t *rt.Thread, c *rt.GoCont, mw *mapWrapper, s string,
+	t *rt.Thread, c *rt.GoCont, mw *mapWrapper, s string, readOnly bool,
 ) (rt.Cont, error) {
 	if ret, ok := mapMethods[s]; ok {
 		return c.PushingNext1(t.Runtime, ret), nil
@@ -189,8 +222,14 @@ func mapIndexString(
 	if !mw.m.Has(key) {
 		return c.Next(), nil
 	}
-	ret := protoValueToLua(mw.field.MapValue(), mw.m.Get(key))
+	ret := protoValueToLua(mw.field.MapValue(), mw.m.Get(key), readOnly)
 	return c.PushingNext1(t.Runtime, ret), nil
+}
+
+// mapIsReadOnly checks whether the list is read-only.
+func mapIsReadOnly(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	ud, _ := c.UserDataArg(0)
+	return pushingBool(t, c, ud.Metatable() == mapTableReadOnly)
 }
 
 // mapLen performs the length operation on a map in Lua.
@@ -209,6 +248,7 @@ func mapRange(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	}
 	ud, _ := c.UserDataArg(0)
 	mw := ud.Value().(*mapWrapper)
+	readOnly := ud.Metatable() == mapTableReadOnly
 	state := make(chan keyValue)
 	done := make(chan struct{})
 	t.Runtime.RequireMem(goroutineOverhead)
@@ -216,8 +256,8 @@ func mapRange(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	go func() {
 		mw.m.Range(func(k pr.MapKey, v pr.Value) bool {
 			elt := keyValue{
-				key:   protoValueToLua(mw.field.MapKey(), k.Value()),
-				value: protoValueToLua(mw.field.MapValue(), v),
+				key:   protoValueToLua(mw.field.MapKey(), k.Value(), true),
+				value: protoValueToLua(mw.field.MapValue(), v, readOnly),
 			}
 			select {
 			case <-done:
@@ -245,10 +285,22 @@ func mapRange(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 		rt.NilValue, rt.NilValue, closing), nil
 }
 
+// mapReadOnly returns a read-only version of the map.
+// If the map is already read-only, this function has no effect.
+func mapReadOnly(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	ud, _ := c.UserDataArg(0)
+	return pushingUserData(t, c, ud.Value(), mapTableReadOnly)
+}
+
 // wrapMap wraps the given map from the given map field as a Lua value.
-func wrapMap(fd pr.FieldDescriptor, m pr.Map) rt.Value {
+// If read-only is true, the wrapped map cannot be changed from Lua.
+func wrapMap(fd pr.FieldDescriptor, m pr.Map, readOnly bool) rt.Value {
+	meta := mapTable
+	if readOnly {
+		meta = mapTableReadOnly
+	}
 	return rt.UserDataValue(rt.NewUserData(&mapWrapper{
 		field: fd,
 		m:     m,
-	}, mapTable))
+	}, meta))
 }

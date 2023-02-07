@@ -14,22 +14,33 @@ var (
 	// msgTable is the metatable for protobuf message userdata values.
 	msgTable *rt.Table
 
+	// msgTableReadOnly is the metatable for protobuf message userdata values
+	// that should not be changed.
+	msgTableReadOnly *rt.Table
+
 	// msgMethods are the methods for proto messages.
 	msgMethods map[string]rt.Value
 )
 
-// init initializes msgTable and msgMethods.
+// init initializes msgTable(ReadOnly) and msgMethods.
 func init() {
 	msgTable = rt.NewTable()
+	msgTableReadOnly = rt.NewTable()
 	msgMethods = make(map[string]rt.Value)
 	setMapFunc(msgMethods, "FullName", msgFullName, 1, false, cpuIOMemTimeSafe)
 	setMapFunc(msgMethods, "Has", msgHas, 2, true, cpuIOMemTimeSafe)
+	setMapFunc(
+		msgMethods, "IsReadOnly", msgIsReadOnly, 1, false, cpuIOMemTimeSafe)
 	setMapFunc(msgMethods, "Marshal", msgMarshal, 2, false, cpuIOTimeSafe)
 	setMapFunc(msgMethods, "Name", msgName, 1, false, cpuIOMemTimeSafe)
+	setMapFunc(msgMethods, "ReadOnly", msgReadOnly, 1, false, cpuIOMemTimeSafe)
 	setMapFunc(msgMethods, "Type", msgType, 1, false, cpuIOMemTimeSafe)
-	setTableFunc(msgTable, "__eq", msgEqual, 2, false, cpuIOMemTimeSafe)
-	setTableFunc(msgTable, "__index", msgIndex, 2, false, cpuIOMemTimeSafe)
-	setTableFunc(msgTable, "__newindex", msgNewIndex, 3, false, cpuIOTimeSafe)
+	setTableFunc(
+		"__eq", msgEqual, 2, false, cpuIOMemTimeSafe, msgTable, msgTableReadOnly)
+	setTableFunc("__index", msgIndex, 2, false, cpuIOMemTimeSafe, msgTable)
+	setTableFunc(
+		"__index", msgIndexReadOnly, 2, false, cpuIOMemTimeSafe, msgTableReadOnly)
+	setTableFunc("__newindex", msgNewIndex, 3, false, cpuIOTimeSafe, msgTable)
 }
 
 // msgEqual checks two protobuf messages for equality in Lua.
@@ -80,7 +91,7 @@ func msgHas(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	if len(tail) == 0 {
 		return pushingTrue(t, c)
 	}
-	value := protoFieldToLua(rmsg, fd)
+	value := protoFieldToLua(rmsg, fd, true)
 	return tailMethodCall(t, c, value, "Has", tail)
 }
 
@@ -90,20 +101,39 @@ func msgIndex(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	msg := ud.Value().(proto.Message)
 	k := c.Arg(1)
 	if s, ok := k.TryString(); ok {
-		return msgIndexString(t, c, msg, s)
+		return msgIndexString(t, c, msg, s, false)
 	}
 	if i, ok := k.TryInt(); ok {
-		return msgIndexInt(t, c, msg, i)
+		return msgIndexInt(t, c, msg, i, false)
 	}
 	if ud, ok := k.TryUserData(); ok {
-		return msgIndexUserData(t, c, msg, ud)
+		return msgIndexUserData(t, c, msg, ud, false)
+	}
+	return c.Next(), nil
+}
+
+// msgIndexReadOnly implements the msg[x] operation in Lua.
+// Composite fields are returned read-only.
+func msgIndexReadOnly(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	ud, _ := c.UserDataArg(0)
+	msg := ud.Value().(proto.Message)
+	k := c.Arg(1)
+	if s, ok := k.TryString(); ok {
+		return msgIndexString(t, c, msg, s, true)
+	}
+	if i, ok := k.TryInt(); ok {
+		return msgIndexInt(t, c, msg, i, true)
+	}
+	if ud, ok := k.TryUserData(); ok {
+		return msgIndexUserData(t, c, msg, ud, true)
 	}
 	return c.Next(), nil
 }
 
 // msgIndexInt returns the field with the number indicated by index.
+// If readOnly is true, composite fields are returned read-only.
 func msgIndexInt(
-	t *rt.Thread, c *rt.GoCont, msg proto.Message, idx int64,
+	t *rt.Thread, c *rt.GoCont, msg proto.Message, idx int64, readOnly bool,
 ) (rt.Cont, error) {
 	if idx < math.MinInt32 || idx > math.MaxInt32 {
 		return c.Next(), nil
@@ -114,7 +144,7 @@ func msgIndexInt(
 	if fd == nil {
 		return c.Next(), nil
 	}
-	retValue := protoFieldToLua(rmsg, fd)
+	retValue := protoFieldToLua(rmsg, fd, readOnly)
 	if retValue.IsNil() {
 		return c.Next(), nil
 	}
@@ -123,8 +153,9 @@ func msgIndexInt(
 
 // msgIndexString returns the method of msg named s, or, if it doesn't exist,
 // the value of the field named s.
+// If readOnly is true, composite fields are returned read-only.
 func msgIndexString(
-	t *rt.Thread, c *rt.GoCont, msg proto.Message, s string,
+	t *rt.Thread, c *rt.GoCont, msg proto.Message, s string, readOnly bool,
 ) (rt.Cont, error) {
 	if ret, ok := msgMethods[s]; ok {
 		return c.PushingNext1(t.Runtime, ret), nil
@@ -134,7 +165,7 @@ func msgIndexString(
 	if fd == nil {
 		return c.Next(), nil
 	}
-	retValue := protoFieldToLua(rmsg, fd)
+	retValue := protoFieldToLua(rmsg, fd, readOnly)
 	if retValue.IsNil() {
 		return c.Next(), nil
 	}
@@ -143,13 +174,14 @@ func msgIndexString(
 
 // msgIndexUserData supports indexing msg via various user data types.
 // Currently, only pr.FieldDescriptor is supported.
+// If readOnly is true, composite fields are returned read-only.
 func msgIndexUserData(
-	t *rt.Thread, c *rt.GoCont, msg proto.Message, ud *rt.UserData,
+	t *rt.Thread, c *rt.GoCont, msg proto.Message, ud *rt.UserData, readOnly bool,
 ) (rt.Cont, error) {
 	rmsg := msg.ProtoReflect()
 	switch x := ud.Value().(type) {
 	case pr.FieldDescriptor:
-		retValue := protoFieldToLua(rmsg, x)
+		retValue := protoFieldToLua(rmsg, x, readOnly)
 		if retValue.IsNil() {
 			return c.Next(), nil
 		}
@@ -247,6 +279,12 @@ func msgNewIndexUserData(
 	}
 }
 
+// msgIsReadOnly checks whether the message is read-only.
+func msgIsReadOnly(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	ud, _ := c.UserDataArg(0)
+	return pushingBool(t, c, ud.Metatable() == msgTableReadOnly)
+}
+
 // msgMarshal marshals a protobuf message to wire-format encoding in Lua.
 func msgMarshal(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	ud, _ := c.UserDataArg(0)
@@ -282,6 +320,13 @@ func msgMarshalOpts(
 	return nil, errors.New("sorry, marshalling with options not supported yet")
 }
 
+// msgReadOnly returns a read-only version of the message.
+// If the message is already read-only, this function has no effect.
+func msgReadOnly(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
+	ud, _ := c.UserDataArg(0)
+	return pushingUserData(t, c, ud.Value(), msgTableReadOnly)
+}
+
 // msgType returns the message type of a protobuf message.
 func msgType(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	ud, _ := c.UserDataArg(0)
@@ -291,10 +336,26 @@ func msgType(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 
 // Wrap returns the given protobuf message as a Lua value.
 func Wrap(msg proto.Message) rt.Value {
+	return wrap(msg, false)
+}
+
+// WrapReadOnly returns the given protobuf message as a Lua value.
+// The returned message cannot be changed from Lua.
+func WrapReadOnly(msg proto.Message) rt.Value {
+	return wrap(msg, true)
+}
+
+// wrap wraps the given proto message as a Lua value.
+// If read-only is true, the wrapped message cannot be changed from Lua.
+func wrap(msg proto.Message, readOnly bool) rt.Value {
 	if msg == nil {
 		return rt.NilValue
 	}
-	return rt.UserDataValue(rt.NewUserData(msg, msgTable))
+	meta := msgTable
+	if readOnly {
+		meta = msgTableReadOnly
+	}
+	return rt.UserDataValue(rt.NewUserData(msg, meta))
 }
 
 // Unwrap unwraps the protobuf message from the given lua value.

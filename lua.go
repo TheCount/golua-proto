@@ -64,6 +64,15 @@ func pushingString(t *rt.Thread, c *rt.GoCont, s string) (rt.Cont, error) {
 	return c.PushingNext1(t.Runtime, rt.StringValue(s)), nil
 }
 
+// pushingUserData can be used to return the user data data with the
+// given metatable.
+func pushingUserData(
+	t *rt.Thread, c *rt.GoCont, data any, metatable *rt.Table,
+) (rt.Cont, error) {
+	return c.PushingNext1(
+		t.Runtime, rt.UserDataValue(rt.NewUserData(data, metatable))), nil
+}
+
 // setMapFunc sets m[name] = f.
 // Useful if __index does more than just access methods. In this case,
 // the methods can be stored in m, and the __index function looks up
@@ -78,14 +87,18 @@ func setMapFunc(
 	m[name] = rt.FunctionValue(goF)
 }
 
-// setTableFunc sets t.name = f.
+// setTableFunc sets t.name = f for all tables t.
 func setTableFunc(
-	t *rt.Table, name string, f rt.GoFunctionFunc, nArgs int, hasEtc bool,
-	complianceFlags rt.ComplianceFlags,
+	name string, f rt.GoFunctionFunc, nArgs int, hasEtc bool,
+	complianceFlags rt.ComplianceFlags, tables ...*rt.Table,
 ) {
 	goF := rt.NewGoFunction(f, name, nArgs, hasEtc)
 	rt.SolemnlyDeclareCompliance(complianceFlags, goF)
-	t.Set(rt.StringValue(name), rt.FunctionValue(goF))
+	key := rt.StringValue(name)
+	value := rt.FunctionValue(goF)
+	for _, t := range tables {
+		t.Set(key, value)
+	}
 }
 
 // tailMethodCall calls obj:methodName with args and uses the return
