@@ -180,7 +180,7 @@ func mapIndexString(
 	t *rt.Thread, c *rt.GoCont, mw *mapWrapper, s string,
 ) (rt.Cont, error) {
 	if ret, ok := mapMethods[s]; ok {
-		return c.PushingNext(t.Runtime, ret), nil
+		return c.PushingNext1(t.Runtime, ret), nil
 	}
 	if mw.field.MapKey().Kind() != pr.StringKind {
 		return c.Next(), nil
