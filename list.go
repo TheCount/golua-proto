@@ -40,6 +40,9 @@ func listIndex(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	if i, ok := k.TryInt(); ok {
 		return listIndexInt(t, c, lw, i)
 	}
+	if s, ok := k.TryString(); ok {
+		return listIndexString(t, c, lw, s)
+	}
 	return c.Next(), nil
 }
 
@@ -52,6 +55,16 @@ func listIndexInt(
 	}
 	ret := protoValueToLua(lw.field, lw.list.Get(int(idx-1)))
 	return c.PushingNext1(t.Runtime, ret), nil
+}
+
+// listIndexString returns the method named s.
+func listIndexString(
+	t *rt.Thread, c *rt.GoCont, lw *listWrapper, s string,
+) (rt.Cont, error) {
+	if ret, ok := listMethods[s]; ok {
+		return c.PushingNext1(t.Runtime, ret), nil
+	}
+	return c.Next(), nil
 }
 
 // listLen performs the length operation on a list in Lua.
