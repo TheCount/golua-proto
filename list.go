@@ -142,7 +142,8 @@ func listPairs(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 // it is not available for maps, so we provide this analogous
 // mechanism for lists as well.
 func listRange(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
-	err, _ := rt.Metacall(t, c.Arg(0), "__pairs", nil, c.Next())
+	list := c.Arg(0)
+	err, _ := rt.Metacall(t, list, "__pairs", []rt.Value{list}, c.Next())
 	return nil, err
 }
 
